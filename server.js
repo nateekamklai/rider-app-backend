@@ -25,7 +25,7 @@ console.log(`Starting server in ${NODE_ENV} mode on port ${PORT}`);
 // ==================== Initialize Database ====================
 const initDatabase = () => {
   const sql = `
-    DROP TABLE IF EXISTS drivers;
+    DROP TABLE IF EXISTS drivers CASCADE;
 
     CREATE TABLE drivers (
       id SERIAL PRIMARY KEY,
