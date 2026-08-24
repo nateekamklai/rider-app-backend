@@ -16,7 +16,13 @@ const io = socketIO(server, {
 app.use(cors());
 app.use(express.json());
 
-const SECRET_KEY = 'your-secret-key-change-this';
+// ==================== Environment Variables ====================
+const PORT = process.env.PORT || 5000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-this';
+
+console.log(`Starting server in ${NODE_ENV} mode on port ${PORT}`);
+console.log(`Using SECRET_KEY from environment: ${SECRET_KEY.substring(0, 10)}...`);
 
 // ==================== API Routes ====================
 
@@ -162,7 +168,6 @@ io.on('connection', (socket) => {
 });
 
 // Start Server
-const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT} in ${NODE_ENV} mode`);
 });
