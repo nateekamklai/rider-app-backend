@@ -17,7 +17,7 @@ app.use(cors());
 app.use(express.json());
 
 // ==================== Environment Variables ====================
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8080;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const SECRET_KEY = process.env.SECRET_KEY || 'your-secret-key-change-this';
 
