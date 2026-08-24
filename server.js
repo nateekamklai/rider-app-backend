@@ -25,7 +25,9 @@ console.log(`Starting server in ${NODE_ENV} mode on port ${PORT}`);
 // ==================== Initialize Database ====================
 const initDatabase = () => {
   const sql = `
-    CREATE TABLE IF NOT EXISTS drivers (
+    DROP TABLE IF EXISTS drivers;
+
+    CREATE TABLE drivers (
       id SERIAL PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
       phone VARCHAR(20) NOT NULL,
@@ -36,24 +38,17 @@ const initDatabase = () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    INSERT INTO drivers (name, phone, latitude, longitude, is_available, rating) 
-    SELECT 'ประสิทธิ เมืองทอง', '0812345678', 13.7563, 100.5018, true, 4.8
-    WHERE NOT EXISTS (SELECT 1 FROM drivers WHERE name = 'ประสิทธิ เมืองทอง');
-
-    INSERT INTO drivers (name, phone, latitude, longitude, is_available, rating) 
-    SELECT 'สมชาย รถแท็กซี่', '0898765432', 13.7480, 100.5060, true, 4.5
-    WHERE NOT EXISTS (SELECT 1 FROM drivers WHERE name = 'สมชาย รถแท็กซี่');
-
-    INSERT INTO drivers (name, phone, latitude, longitude, is_available, rating) 
-    SELECT 'นายขับ ไรเดอร์', '0865432109', 13.7620, 100.4950, true, 4.9
-    WHERE NOT EXISTS (SELECT 1 FROM drivers WHERE name = 'นายขับ ไรเดอร์');
+    INSERT INTO drivers (name, phone, latitude, longitude, is_available, rating) VALUES
+    ('ประสิทธิ เมืองทอง', '0812345678', 13.7563, 100.5018, true, 4.8),
+    ('สมชาย รถแท็กซี่', '0898765432', 13.7480, 100.5060, true, 4.5),
+    ('นายขับ ไรเดอร์', '0865432109', 13.7620, 100.4950, true, 4.9);
   `;
 
   pool.query(sql, (err, result) => {
     if (err) {
       console.error('❌ Database initialization failed:', err.message);
     } else {
-      console.log('✅ Database initialized');
+      console.log('✅ Database initialized successfully');
     }
   });
 };
