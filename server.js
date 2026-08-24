@@ -90,19 +90,22 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/drivers/nearby', async (req, res) => {
   try {
     const { latitude, longitude, radius } = req.query;
+    const radiusKm = parseFloat(radius) || 5;
     
     const result = await new Promise((resolve, reject) => {
       pool.query(
-        `SELECT id, name, phone, latitude, longitude, rating,
-                (6371 * acos(cos(radians($2)) * cos(radians(latitude)) * 
-                 cos(radians(longitude) - radians($1)) + sin(radians($2)) * 
-                 sin(radians(latitude)))) AS distance
-         FROM drivers 
-         WHERE is_available = true
-         HAVING distance < $3
-         ORDER BY distance
-         LIMIT 10`,
-        [longitude, latitude, radius || 5],
+        `SELECT * FROM (
+          SELECT id, name, phone, latitude, longitude, rating,
+                  (6371 * acos(cos(radians($2)) * cos(radians(latitude)) * 
+                   cos(radians(longitude) - radians($1)) + sin(radians($2)) * 
+                   sin(radians(latitude)))) AS distance
+          FROM drivers 
+          WHERE is_available = true
+        ) AS nearby
+        WHERE distance < $3
+        ORDER BY distance
+        LIMIT 10`,
+        [longitude, latitude, radiusKm],
         (err, result) => {
           if (err) reject(err);
           else resolve(result);
