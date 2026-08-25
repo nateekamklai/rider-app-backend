@@ -4,6 +4,7 @@ const socketIO = require('socket.io');
 const cors = require('cors');
 const pool = require('./db');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs'); // ต้อง npm install bcryptjs
 
 const app = express();
 const server = http.createServer(app);
@@ -25,7 +26,16 @@ console.log(`Starting server in ${NODE_ENV} mode on port ${PORT}`);
 // ==================== Initialize Database ====================
 const initDatabase = () => {
   const sql = `
+    DROP TABLE IF EXISTS users CASCADE;
     DROP TABLE IF EXISTS drivers CASCADE;
+
+    CREATE TABLE users (
+      id SERIAL PRIMARY KEY,
+      phone VARCHAR(20) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
     CREATE TABLE drivers (
       id SERIAL PRIMARY KEY,
@@ -38,6 +48,11 @@ const initDatabase = () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    INSERT INTO users (phone, password, name) VALUES
+    ('0812345678', '${bcrypt.hashSync('password123', 10)}', 'สมชาย ทดสอบ'),
+    ('0898765432', '${bcrypt.hashSync('password123', 10)}', 'ปรเมศ ผู้ขับ'),
+    ('0865432109', '${bcrypt.hashSync('password123', 10)}', 'นายขับ ไรเดอร์');
+
     INSERT INTO drivers (name, phone, latitude, longitude, is_available, rating) VALUES
     ('ประสิทธิ เมืองทอง', '0812345678', 13.7563, 100.5018, true, 4.8),
     ('สมชาย รถแท็กซี่', '0898765432', 13.7480, 100.5060, true, 4.5),
@@ -49,6 +64,10 @@ const initDatabase = () => {
       console.error('❌ Database initialization failed:', err.message);
     } else {
       console.log('✅ Database initialized successfully');
+      console.log('📝 Test users created:');
+      console.log('   Phone: 0812345678, Password: password123');
+      console.log('   Phone: 0898765432, Password: password123');
+      console.log('   Phone: 0865432109, Password: password123');
     }
   });
 };
@@ -63,24 +82,88 @@ app.get('/', (req, res) => {
 // 1. ลงทะเบียน
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, phone, email, password, userType } = req.body;
-    
-    res.json({ 
+    const { phone, password, name } = req.body;
+
+    // Validate input
+    if (!phone || !password || !name) {
+      return res.status(400).json({ error: 'Missing required fields: phone, password, name' });
+    }
+
+    // Hash password
+    const hashedPassword = bcrypt.hashSync(password, 10);
+
+    // Insert to database
+    const result = await new Promise((resolve, reject) => {
+      pool.query(
+        'INSERT INTO users (phone, password, name) VALUES ($1, $2, $3) RETURNING id, phone, name',
+        [phone, hashedPassword, name],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        }
+      );
+    });
+
+    const user = result.rows[0];
+    const token = jwt.sign({ id: user.id, phone: user.phone }, SECRET_KEY, { expiresIn: '7d' });
+
+    res.json({
       message: 'Registration successful',
-      user: { name, email, userType }
+      token,
+      user: { id: user.id, phone: user.phone, name: user.name }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    if (error.message.includes('duplicate key')) {
+      res.status(400).json({ error: 'Phone number already registered' });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
 // 2. ล็อกอิน
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    
-    const token = jwt.sign({ email }, SECRET_KEY, { expiresIn: '7d' });
-    res.json({ message: 'Login successful', token });
+    const { phone, password } = req.body;
+
+    // Validate input
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Missing phone or password' });
+    }
+
+    // Find user in database
+    const result = await new Promise((resolve, reject) => {
+      pool.query(
+        'SELECT id, phone, password, name FROM users WHERE phone = $1',
+        [phone],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        }
+      );
+    });
+
+    // Check if user exists
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: 'Phone or password is incorrect' });
+    }
+
+    const user = result.rows[0];
+
+    // Verify password
+    const isPasswordValid = bcrypt.compareSync(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Phone or password is incorrect' });
+    }
+
+    // Generate token
+    const token = jwt.sign({ id: user.id, phone: user.phone }, SECRET_KEY, { expiresIn: '7d' });
+
+    res.json({
+      message: 'Login successful',
+      token,
+      user: { id: user.id, phone: user.phone, name: user.name }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -91,7 +174,7 @@ app.get('/api/drivers/nearby', async (req, res) => {
   try {
     const { latitude, longitude, radius } = req.query;
     const radiusKm = parseFloat(radius) || 5;
-    
+
     const result = await new Promise((resolve, reject) => {
       pool.query(
         `SELECT * FROM (
@@ -112,7 +195,7 @@ app.get('/api/drivers/nearby', async (req, res) => {
         }
       );
     });
-    
+
     res.json(result.rows);
   } catch (error) {
     console.error('Error in /api/drivers/nearby:', error.message);
@@ -125,7 +208,7 @@ app.put('/api/drivers/:id/location', async (req, res) => {
   try {
     const { id } = req.params;
     const { latitude, longitude, is_available } = req.body;
-    
+
     const result = await new Promise((resolve, reject) => {
       pool.query(
         'UPDATE drivers SET latitude = $1, longitude = $2, is_available = $3 WHERE id = $4 RETURNING *',
@@ -136,7 +219,7 @@ app.put('/api/drivers/:id/location', async (req, res) => {
         }
       );
     });
-    
+
     io.emit('driver-location-updated', result.rows[0]);
     res.json(result.rows[0]);
   } catch (error) {
@@ -148,8 +231,8 @@ app.put('/api/drivers/:id/location', async (req, res) => {
 app.post('/api/rides', async (req, res) => {
   try {
     const { passenger_id, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, estimated_fare } = req.body;
-    
-    res.json({ 
+
+    res.json({
       message: 'Ride request created',
       ride: { passenger_id, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, estimated_fare }
     });
@@ -161,16 +244,16 @@ app.post('/api/rides', async (req, res) => {
 // ==================== Socket.IO Events ====================
 io.on('connection', (socket) => {
   console.log('New user connected:', socket.id);
-  
+
   socket.on('find-driver', (data) => {
     console.log('Passenger searching for driver:', data);
     socket.broadcast.emit('driver-needed', data);
   });
-  
+
   socket.on('driver-location', (data) => {
     io.emit('driver-location-updated', data);
   });
-  
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
