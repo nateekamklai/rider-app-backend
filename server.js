@@ -77,15 +77,53 @@ app.post('/api/auth/register', async (req, res) => {
 // 2. ล็อกอิน
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { phone, password } = req.body;
     
-    const token = jwt.sign({ email }, SECRET_KEY, { expiresIn: '7d' });
-    res.json({ message: 'Login successful', token });
+    if (!phone || !password) {
+      return res.status(400).json({ message: 'Phone and password are required' });
+    }
+
+    const result = await new Promise((resolve, reject) => {
+      pool.query(
+        'SELECT * FROM users WHERE phone = $1',
+        [phone],
+        (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        }
+      );
+    });
+
+    // Check if user exists
+    if (result.rows.length === 0) {
+      return res.status(401).json({ message: 'Invalid phone or password' });
+    }
+
+    const user = result.rows[0];
+
+    // Simple password check (in production, use bcrypt)
+    if (user.password !== password) {
+      return res.status(401).json({ message: 'Invalid phone or password' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user.id, phone: user.phone }, SECRET_KEY, { expiresIn: '7d' });
+    
+    res.json({ 
+      message: 'Login successful', 
+      token,
+      user: {
+        id: user.id,
+        phone: user.phone,
+        name: user.name,
+        userType: user.user_type
+      }
+    });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({ error: error.message });
   }
 });
-
 // 3. ค้นหาไรเดอร์ใกล้เคียง
 app.get('/api/drivers/nearby', async (req, res) => {
   try {
